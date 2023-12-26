@@ -70,6 +70,7 @@ impl From<Dir> for vals::Dir {
         match raw {
             Dir::MemoryToPeripheral => Self::MEMORYTOPERIPHERAL,
             Dir::PeripheralToMemory => Self::PERIPHERALTOMEMORY,
+            Dir::MemoryToMemory => Self::MEMORYTOMEMORY,
         }
     }
 }
@@ -279,6 +280,7 @@ impl<'a, C: Channel> Transfer<'a, C> {
             peri_addr as *const u32,
             ptr as *mut u32,
             len,
+            false,
             true,
             W::size(),
             options,
@@ -316,6 +318,7 @@ impl<'a, C: Channel> Transfer<'a, C> {
             peri_addr as *const u32,
             ptr as *mut u32,
             len,
+            false,
             true,
             W::size(),
             options,
@@ -341,6 +344,62 @@ impl<'a, C: Channel> Transfer<'a, C> {
             repeated as *const W as *mut u32,
             count,
             false,
+            false,
+            W::size(),
+            options,
+        )
+    }
+
+    pub unsafe fn new_mem2mem<W: Word>(
+        channel: impl Peripheral<P = C> + 'a,
+        request: Request,
+        src: *const [W],
+        dst: *mut [W],
+        options: TransferOptions,
+    ) -> Self {
+        into_ref!(channel);
+
+        let (src_ptr, src_len) = super::slice_ptr_parts(src);
+        assert!(src_len > 0 && src_len <= 0xFFFF);
+
+        let (dst_ptr, dst_len) = super::slice_ptr_parts(dst);
+        assert_eq!(src_len, dst_len);
+
+        Self::new_inner(
+            channel,
+            request,
+            Dir::MemoryToMemory,
+            src_ptr as *const u32,
+            dst_ptr as *mut u32,
+            src_len,
+            true,
+            true,
+            W::size(),
+            options,
+        )
+    }
+
+    pub unsafe fn new_mem2mem_src_repeated<W: Word>(
+        channel: impl Peripheral<P = C> + 'a,
+        request: Request,
+        src: *const W,
+        dst: *mut [W],
+        options: TransferOptions,
+    ) -> Self {
+        into_ref!(channel);
+
+        let (ptr, len) = super::slice_ptr_parts(dst);
+        assert!(len > 0 && len <= 0xFFFF);
+
+        Self::new_inner(
+            channel,
+            request,
+            Dir::MemoryToMemory,
+            src as *const u32,
+            ptr as *mut u32,
+            len,
+            false,
+            true,
             W::size(),
             options,
         )
@@ -353,6 +412,7 @@ impl<'a, C: Channel> Transfer<'a, C> {
         peri_addr: *const u32,
         mem_addr: *mut u32,
         mem_len: usize,
+        incr_peri: bool,
         incr_mem: bool,
         data_size: WordSize,
         options: TransferOptions,
@@ -387,7 +447,7 @@ impl<'a, C: Channel> Transfer<'a, C> {
             w.set_psize(data_size.into());
             w.set_pl(vals::Pl::VERYHIGH);
             w.set_minc(incr_mem);
-            w.set_pinc(false);
+            w.set_pinc(incr_peri);
             w.set_teie(true);
             w.set_tcie(options.complete_transfer_ir);
             w.set_circ(options.circular);

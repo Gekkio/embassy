@@ -39,6 +39,7 @@ use crate::interrupt::Priority;
 enum Dir {
     MemoryToPeripheral,
     PeripheralToMemory,
+    MemoryToMemory,
 }
 
 /// "No DMA" placeholder.
